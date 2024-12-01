@@ -1,3 +1,5 @@
+import statistics
+
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
@@ -69,6 +71,27 @@ def create_set_of_points_on_sphere(number_of_points=100, points_dim=2):
     for i in range(0, number_of_points, 10):
         x = uniform_direction.rvs(dim=points_dim, size=10)
         x *= np.sqrt(points_dim)
+        y = np.logical_xor.reduce((np.sign(x) > 0), axis=1).astype(float) * 2 - 1
+        total_x.append(x)
+        total_y.append(y)
+
+    total_x = np.concatenate(total_x, axis=0).astype(np.float32)
+    total_y = np.expand_dims(np.concatenate(total_y, axis=0), -1).astype(np.float32)
+    total_x = torch.from_numpy(total_x)
+    total_y = torch.from_numpy(total_y)
+    dataset = TensorDataset(total_x, total_y)
+    dataloader = DataLoader(dataset, batch_size=number_of_points, shuffle=True)
+    return dataloader
+
+
+def create_mixture_of_gaussian_points(number_of_points=100, points_dim=2):
+    total_x = []
+    total_y = []
+    for i in range(0, number_of_points, 10):
+        k = 2 * np.random.randint(0, 2) - 1
+        mean = [k] + [0 for _ in range(points_dim - 1)]
+        cov = np.eye(points_dim)
+        x = np.random.multivariate_normal(mean, cov, 10)
         y = np.logical_xor.reduce((np.sign(x) > 0), axis=1).astype(float) * 2 - 1
         total_x.append(x)
         total_y.append(y)
@@ -159,7 +182,8 @@ def get_trained_model(input_dim, dataloader):
     return model
 
 
-def plot_graph_of_percentage_of_marginal_point_as_a_function_of_dimension(input_dims, train_size):
+def plot_graph_of_percentage_of_marginal_point_as_a_function_of_dimension(input_dims, train_size,
+                                                                          distribution='sphere'):
     """
     Plotting the graph of the percentage of marginal points (up to a 10% slack) as a function of the input's dimension
     :param input_dims: the dimension of the input data
@@ -168,7 +192,10 @@ def plot_graph_of_percentage_of_marginal_point_as_a_function_of_dimension(input_
     number_of_marginal_points = []
     for input_dim in input_dims:
         print(f'INPUT DIM: {input_dim}')
-        dataloader = create_set_of_points_on_sphere(number_of_points=train_size, points_dim=input_dim)
+        if distribution == 'sphere':
+            dataloader = create_set_of_points_on_sphere(number_of_points=train_size, points_dim=input_dim)
+        else:
+            dataloader = create_mixture_of_gaussian_points(number_of_points=train_size, points_dim=input_dim)
         model = get_trained_model(input_dim, dataloader)
 
         marginal_points, _ = find_marginal_points(dataloader, model)
@@ -181,11 +208,47 @@ def plot_graph_of_percentage_of_marginal_point_as_a_function_of_dimension(input_
     plt.ylabel("Ratio of marginal points", fontsize=38, wrap=True)
     plt.plot(input_dims, number_of_marginal_points)
     plt.ylim(ymin=0)
-    plt.savefig(rf'C:\Users\admin\OneDrive\Desktop\privacyIssuesOneDim\ratio_of_marginal_points.eps', format='eps', dpi=1200)
+    # plt.savefig(rf'C:\Users\admin\OneDrive\Desktop\privacyIssuesOneDim\ratio_of_marginal_points.eps', format='eps', dpi=1200)
     plt.show()
 
 
-def plot_graph_of_bad_test_points_as_a_function_of_dimension(input_dims, train_size, test_size):
+def plot_graph_of_average_percentage_of_marginal_point_as_a_function_of_dimension(input_dims, train_size,
+                                                                                  distribution='sphere',
+                                                                                  number_of_trials=10):
+    """
+    Plotting the graph of the percentage of marginal points (up to a 10% slack) as a function of the input's dimension
+    :param number_of_trials: number of trials for each dimension
+    :param input_dims: the dimension of the input data
+    :param train_size: the size of the training data
+    """
+    average_number_of_marginal_points = []
+    for input_dim in input_dims:
+        print(f'INPUT DIM: {input_dim}')
+        number_of_marginal_points = []
+        for _ in range(number_of_trials):
+            if distribution == 'sphere':
+                dataloader = create_set_of_points_on_sphere(number_of_points=train_size, points_dim=input_dim)
+            else:
+                dataloader = create_mixture_of_gaussian_points(number_of_points=train_size, points_dim=input_dim)
+            model = get_trained_model(input_dim, dataloader)
+            marginal_points, _ = find_marginal_points(dataloader, model)
+            number_of_marginal_points.append(marginal_points.shape[0] / train_size)
+        average_number_of_marginal_points.append(statistics.fmean(number_of_marginal_points))
+
+    plt.rcParams.update({'font.size': 34})
+    plt.figure(figsize=(12, 10))
+    plt.title("Average Ratio of Marginal Points", fontsize=40, wrap=True)
+    plt.xlabel("Input's dimension", fontsize=38, wrap=True)
+    plt.ylabel("Average Ratio of marginal points", fontsize=38, wrap=True)
+    plt.plot(input_dims, average_number_of_marginal_points)
+    plt.ylim(ymin=0)
+    plt.savefig(
+        rf'C:\Users\admin\OneDrive\Desktop\privacyIssuesOneDim\average_ratio_of_marginal_points_{distribution}.eps',
+        format='eps', dpi=1200)
+    plt.show()
+
+
+def plot_graph_of_bad_test_points_as_a_function_of_dimension(input_dims, train_size, test_size, distribution='sphere'):
     """
     Plotting a graph of the percentage of test points that lie on or above the margin as a
     function of the input's dimension. For each dimension, a new model is trained
@@ -193,17 +256,23 @@ def plot_graph_of_bad_test_points_as_a_function_of_dimension(input_dims, train_s
     :param train_size: the size of the training data
     :param test_size: the size of the test data
     """
-    number_of_bad_points = []
+    ratio_of_bad_points = []
     for input_dim in input_dims:
         print(f'INPUT DIM: {input_dim}')
-        dataloader = create_set_of_points_on_sphere(number_of_points=train_size, points_dim=input_dim)
+        if distribution == 'sphere':
+            dataloader = create_set_of_points_on_sphere(number_of_points=train_size, points_dim=input_dim)
+        else:
+            dataloader = create_set_of_points_on_sphere(number_of_points=train_size, points_dim=input_dim)
         model = get_trained_model(input_dim, dataloader)
 
         marginal_points, margin_value = find_marginal_points(dataloader, model)
         print(f"margin value: {margin_value}")
         print(f"TEST")
-        test_set = create_set_of_points_on_sphere(number_of_points=test_size, points_dim=input_dim)
-        number_of_bad_points.append(
+        if distribution == 'sphere':
+            test_set = create_set_of_points_on_sphere(number_of_points=test_size, points_dim=input_dim)
+        else:
+            test_set = create_mixture_of_gaussian_points(number_of_points=test_size, points_dim=input_dim)
+        ratio_of_bad_points.append(
             get_number_of_test_points_greater_than_margin(test_set, model, margin_value) / test_size)
 
     plt.rcParams.update({'font.size': 34})
@@ -211,18 +280,88 @@ def plot_graph_of_bad_test_points_as_a_function_of_dimension(input_dims, train_s
     plt.title("Ratio of test points with value greater or equal to margin", fontsize=40, wrap=True)
     plt.xlabel("Input's dimension", fontsize=38, wrap=True)
     plt.ylabel("Ratio", fontsize=38, wrap=True)
-    plt.plot(input_dims, number_of_bad_points)
-    plt.savefig(rf'C:\Users\admin\OneDrive\Desktop\privacyIssuesOneDim\ratio_of_bad_points_up_to_dim_{input_dims[-1]}.eps', format='eps', dpi=1200)
+    plt.plot(input_dims, ratio_of_bad_points)
+    # plt.savefig(rf'C:\Users\admin\OneDrive\Desktop\privacyIssuesOneDim\average_ratio_of_bad_points_up_to_dim_{input_dims[-1]}.eps', format='eps', dpi=1200)
+    plt.show()
+
+
+def plot_graph_average_of_bad_test_points_as_a_function_of_dimension(input_dims, train_size, test_size,
+                                                                     distribution='sphere',
+                                                                     number_of_trials=10):
+    """
+    Plotting a graph of the percentage of test points that lie on or above the margin as a
+    function of the input's dimension. For each dimension, a new model is trained
+    :param input_dims: the input's dimension
+    :param train_size: the size of the training data
+    :param test_size: the size of the test data
+    :param number_of_trials: number of trials
+    """
+    average_ratio_of_bad_points = []
+    for input_dim in input_dims:
+        print(f'INPUT DIM: {input_dim}')
+        ratio_of_bad_points = []
+        for _ in range(number_of_trials):
+            if distribution == 'sphere':
+                dataloader = create_set_of_points_on_sphere(number_of_points=train_size, points_dim=input_dim)
+            else:
+                dataloader = create_mixture_of_gaussian_points(number_of_points=train_size, points_dim=input_dim)
+            model = get_trained_model(input_dim, dataloader)
+
+            marginal_points, margin_value = find_marginal_points(dataloader, model)
+            print(f"margin value: {margin_value}")
+            print(f"TEST")
+            if distribution == 'sphere':
+                test_set = create_set_of_points_on_sphere(number_of_points=test_size, points_dim=input_dim)
+            else:
+                test_set = create_mixture_of_gaussian_points(number_of_points=test_size, points_dim=input_dim)
+            ratio_of_bad_points.append(
+                get_number_of_test_points_greater_than_margin(test_set, model, margin_value) / test_size)
+        average_ratio_of_bad_points.append(statistics.fmean(ratio_of_bad_points))
+
+    plt.rcParams.update({'font.size': 34})
+    plt.figure(figsize=(12, 10))
+    plt.title("Average ratio of test points with value greater or equal to margin", fontsize=40, wrap=True)
+    plt.xlabel("Input's dimension", fontsize=38, wrap=True)
+    plt.ylabel("Average ratio", fontsize=38, wrap=True)
+    plt.plot(input_dims, average_ratio_of_bad_points)
+    plt.savefig(
+        rf'C:\Users\admin\OneDrive\Desktop\privacyIssuesOneDim\average_ratio_of_bad_points_up_to_dim_{input_dims[-1]}_{distribution}.eps',
+        format='eps', dpi=1200)
     plt.show()
 
 
 if __name__ == '__main__':
-    plot_graph_of_percentage_of_marginal_point_as_a_function_of_dimension(input_dims=[i for i in range(100, 1200, 50)],
-                                                                          train_size=20)
-    plot_graph_of_bad_test_points_as_a_function_of_dimension(input_dims=[i for i in range(1, 100, 1)], train_size=20,
-                                                             test_size=5000)
+    # plot_graph_of_percentage_of_marginal_point_as_a_function_of_dimension(input_dims=[i for i in range(100, 1200, 50)],
+    #                                                                       train_size=20)
+
+    # plot_graph_of_average_percentage_of_marginal_point_as_a_function_of_dimension(input_dims=[i for i in range(100, 1200, 50)],
+    #                                                                       train_size=20, number_of_trials=50)
+
+    # plot_graph_average_of_bad_test_points_as_a_function_of_dimension(input_dims=[i for i in range(1, 100, 1)],
+    #                                                                  train_size=20,
+    #                                                                  test_size=5000, number_of_trials=50)
+    # long_range = [i for i in range(1, 100, 1)]
+    # long_range.extend([i for i in range(100, 600, 10)])
+    # plot_graph_average_of_bad_test_points_as_a_function_of_dimension(input_dims=long_range,
+    #                                                                  train_size=20,
+    #                                                                  test_size=5000,
+    #                                                                  number_of_trials=50)
+
+    # plot_graph_of_average_percentage_of_marginal_point_as_a_function_of_dimension(
+    #     input_dims=[i for i in range(100, 1200, 50)],
+    #     train_size=20,
+    #     distribution='gaussian',
+    #     number_of_trials=50)
+
+    # plot_graph_average_of_bad_test_points_as_a_function_of_dimension(input_dims=[i for i in range(1, 100, 1)],
+    #                                                                  train_size=20,
+    #                                                                  test_size=5000,
+    #                                                                  number_of_trials=50,
+    #                                                                  distribution='gaussian')
     long_range = [i for i in range(1, 100, 1)]
     long_range.extend([i for i in range(100, 600, 10)])
-    plot_graph_of_bad_test_points_as_a_function_of_dimension(input_dims=long_range,
-                                                             train_size=20,
-                                                             test_size=5000)
+    plot_graph_average_of_bad_test_points_as_a_function_of_dimension(input_dims=long_range,
+                                                                     train_size=20,
+                                                                     test_size=5000,
+                                                                     number_of_trials=50,
+                                                                     distribution='gaussian')
