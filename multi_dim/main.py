@@ -330,6 +330,44 @@ def plot_graph_average_of_bad_test_points_as_a_function_of_dimension(input_dims,
     plt.show()
 
 
+def plot_graph_of_test_accuracy_as_a_function_of_dimension(input_dims, train_size, test_size,
+                                                           distribution='sphere',
+                                                           number_of_trials=10):
+    average_test_accuracy = []
+    for input_dim in input_dims:
+        test_accuracy_per_dimension = []
+        for _ in range(number_of_trials):
+            if distribution == 'sphere':
+                dataloader = create_set_of_points_on_sphere(number_of_points=train_size, points_dim=input_dim)
+            else:
+                dataloader = create_mixture_of_gaussian_points(number_of_points=train_size, points_dim=input_dim)
+            model = get_trained_model(input_dim, dataloader).eval()
+
+            if distribution == 'sphere':
+                test_set = create_set_of_points_on_sphere(number_of_points=test_size, points_dim=input_dim)
+            else:
+                test_set = create_mixture_of_gaussian_points(number_of_points=test_size, points_dim=input_dim)
+            current_correct = 0
+            for x_batch, y_batch in test_set:
+                x_batch = x_batch.to(device)
+                y_batch = y_batch.to(device)
+                y_batch_pred = torch.sign(model(x_batch))
+                current_correct += (y_batch == y_batch_pred).sum().item()
+            test_accuracy_per_dimension.append(100 * current_correct / test_size)
+        average_test_accuracy.append(sum(test_accuracy_per_dimension) / len(test_accuracy_per_dimension))
+
+    plt.rcParams.update({'font.size': 34})
+    plt.figure(figsize=(12, 10))
+    plt.title("Average test accuracy", fontsize=40, wrap=True)
+    plt.xlabel("Input's dimension", fontsize=38, wrap=True)
+    plt.ylabel("Average ratio", fontsize=38, wrap=True)
+    plt.plot(input_dims, average_test_accuracy)
+    plt.savefig(
+        rf'C:\Users\admin\OneDrive\Desktop\papers\privacyIssuesOneDim\average_test_accuracy_{input_dims[-1]}_{distribution}.eps',
+        format='eps', dpi=1200)
+    plt.show()
+
+
 if __name__ == '__main__':
     # plot_graph_of_percentage_of_marginal_point_as_a_function_of_dimension(input_dims=[i for i in range(100, 1200, 50)],
     #                                                                       train_size=20)
@@ -360,8 +398,13 @@ if __name__ == '__main__':
     #                                                                  distribution='gaussian')
     long_range = [i for i in range(1, 100, 1)]
     long_range.extend([i for i in range(100, 600, 10)])
-    plot_graph_average_of_bad_test_points_as_a_function_of_dimension(input_dims=long_range,
-                                                                     train_size=20,
-                                                                     test_size=5000,
-                                                                     number_of_trials=50,
-                                                                     distribution='gaussian')
+    # plot_graph_average_of_bad_test_points_as_a_function_of_dimension(input_dims=long_range,
+    #                                                                  train_size=20,
+    #                                                                  test_size=5000,
+    #                                                                  number_of_trials=50,
+    #                                                                  distribution='gaussian')
+    plot_graph_of_test_accuracy_as_a_function_of_dimension(input_dims=long_range,
+                                                           train_size=20,
+                                                           test_size=5000,
+                                                           number_of_trials=50,
+                                                           distribution='gaussian')
