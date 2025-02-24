@@ -88,11 +88,12 @@ def create_mixture_of_gaussian_points(number_of_points=100, points_dim=2):
     total_x = []
     total_y = []
     for i in range(0, number_of_points, 10):
-        k = 2 * np.random.randint(0, 2) - 1
-        mean = [k] + [0 for _ in range(points_dim - 1)]
+        k = 1 if i % 2 == 0 else -1
+        k = k * (points_dim ** 0.33)
+        mean = np.array([k] + [0 for _ in range(points_dim - 1)])
         cov = np.eye(points_dim)
         x = np.random.multivariate_normal(mean, cov, 10)
-        y = np.logical_xor.reduce((np.sign(x) > 0), axis=1).astype(float) * 2 - 1
+        y = np.sign(k) * np.ones(10, dtype=np.float32)
         total_x.append(x)
         total_y.append(y)
 
@@ -157,7 +158,7 @@ def get_trained_model(input_dim, dataloader):
     dataset_size = len(dataloader.dataset)
     # Loop over epochs
     for epoch in range(N_EPOCHS):
-        print(f"Epoch {epoch + 1}\n-------------------------------")
+        # print(f"Epoch {epoch + 1}\n-------------------------------")
 
         # Loop over batches in an epoch using DataLoader
         for id_batch, (x_batch, y_batch) in enumerate(dataloader):
@@ -171,10 +172,10 @@ def get_trained_model(input_dim, dataloader):
 
             # Every 100 batches, print the loss for this batch
             # as well as the number of examples processed so far
-            if id_batch % 100 == 0:
-                loss, current = loss.item(), (id_batch + 1) * len(x_batch)
-                print(f"loss: {loss:>7f}  [{current:>5d}/{dataset_size:>5d}]")
-                print(f"learning rate: {scheduler.optimizer.param_groups[0]['lr']}")
+            # if id_batch % 100 == 0:
+            #     loss, current = loss.item(), (id_batch + 1) * len(x_batch)
+            #     print(f"loss: {loss:>7f}  [{current:>5d}/{dataset_size:>5d}]")
+            #     print(f"learning rate: {scheduler.optimizer.param_groups[0]['lr']}")
 
         # Step the scheduler after each epoch
         scheduler.step()
@@ -335,6 +336,7 @@ def plot_graph_of_test_accuracy_as_a_function_of_dimension(input_dims, train_siz
                                                            number_of_trials=10):
     average_test_accuracy = []
     for input_dim in input_dims:
+        print(f"DIM {input_dim}")
         test_accuracy_per_dimension = []
         for _ in range(number_of_trials):
             if distribution == 'sphere':
@@ -360,7 +362,7 @@ def plot_graph_of_test_accuracy_as_a_function_of_dimension(input_dims, train_siz
     plt.figure(figsize=(12, 10))
     plt.title("Average test accuracy", fontsize=40, wrap=True)
     plt.xlabel("Input's dimension", fontsize=38, wrap=True)
-    plt.ylabel("Average ratio", fontsize=38, wrap=True)
+    plt.ylabel("Average test accuracy", fontsize=38, wrap=True)
     plt.plot(input_dims, average_test_accuracy)
     plt.savefig(
         rf'C:\Users\admin\OneDrive\Desktop\papers\privacyIssuesOneDim\average_test_accuracy_{input_dims[-1]}_{distribution}.eps',
@@ -396,15 +398,15 @@ if __name__ == '__main__':
     #                                                                  test_size=5000,
     #                                                                  number_of_trials=50,
     #                                                                  distribution='gaussian')
-    long_range = [i for i in range(1, 100, 1)]
-    long_range.extend([i for i in range(100, 600, 10)])
+    long_range = [i for i in range(10, 100, 1)]
+    long_range.extend([i for i in range(100, 1001, 50)])
     # plot_graph_average_of_bad_test_points_as_a_function_of_dimension(input_dims=long_range,
     #                                                                  train_size=20,
     #                                                                  test_size=5000,
     #                                                                  number_of_trials=50,
     #                                                                  distribution='gaussian')
     plot_graph_of_test_accuracy_as_a_function_of_dimension(input_dims=long_range,
-                                                           train_size=20,
+                                                           train_size=30,
                                                            test_size=5000,
-                                                           number_of_trials=50,
+                                                           number_of_trials=5,
                                                            distribution='gaussian')
